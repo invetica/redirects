@@ -28,14 +28,6 @@
 (s/def ::canonical :ring.request/server-name)
 (s/def ::https? boolean?)
 
-(s/def ::registry
-  (s/map-of :ring.request/server-name
-            (s/keys :opt-un [::aliases ::canonical ::https?])))
-
-(s/def ::compiled-registry
-  (s/map-of :ring.request/server-name
-            (s/keys :opt-un [::canonical ::https?])))
-
 ;; -----------------------------------------------------------------------------
 ;; Utils
 
@@ -59,13 +51,19 @@
 ;; -----------------------------------------------------------------------------
 ;; Redirect
 
+(s/fdef canonical-uri-str
+  :args (s/cat :request :ring/request :site ::site :options ::options)
+  :ret ::uri/absolute-uri-str)
+
 (defn- canonical-uri-str
-  [request {:keys [canonical https?]}]
-  (let [qs (:query-string request)]
+  [request {:keys [site/canonical site/https?]} options]
+  (let [ssl-port (:ssl-port options)
+        qs (:query-string request)]
     (str "http"
          (when https? "s")
          "://"
          canonical
+         (when (and https? ssl-port) (str ":" ssl-port))
          (:uri request)
          (when qs (str "?" qs)))))
 
@@ -87,26 +85,66 @@
   ([registry request] (canonical-redirect registry request {}))
   ([registry request options]
    (let [{:keys [scheme server-name]} request]
-     (when-let [{:keys [::canonical ::https?]
+     (when-let [{:keys [:site/canonical :site/https?]
                  :or {https? true} :as site} (get registry server-name)]
        (when-not (= canonical server-name)
          (response/redirect
-          (canonical-uri-str request site)
+          (canonical-uri-str request site options)
           (if (get-request? request) 302 307)))))))
 
 ;; -----------------------------------------------------------------------------
-;; Config
+;; Sites
+
+(s/def :site/aliases (s/coll-of :ring.request/server-name :into #{}))
+(s/def :site/canonical :ring.request/server-name)
+(s/def :site/https? boolean?)
+
+(s/def ::site
+  (s/keys :req [:site/canonical]
+          :opt [:site/aliases
+                :site/https?]))
+
+(s/def ::compiled-sites
+  (s/map-of :ring.request/server-name
+            (s/keys :req [:site/canonical]
+                    :opt [:site/https?])))
+
+(s/fdef compile-sites
+  :args (s/cat :sites (s/coll-of ::site :into #{}))
+  :ret ::compiled-sites)
+
+(defn compile-sites
+  [sites]
+  (into {}
+        (mapcat (fn [site]
+                  (let [m* (dissoc site :site/aliases)]
+                    (into []
+                          (map #(vector %1 m*))
+                          (:site/aliases site)))))
+        sites))
+
+;; -----------------------------------------------------------------------------
+;; Deprecated registry
+;;
+;; Use `compile-sites` instead.
+
+(s/def ::registry
+  (s/map-of :ring.request/server-name
+            (s/keys :opt-un [::aliases ::canonical ::https?])))
+
+(s/def ::compiled-registry
+  (s/map-of :ring.request/server-name
+            (s/keys :opt-un [::canonical ::https?])))
 
 (s/fdef make-registry
   :args (s/cat :registry ::registry)
-  :ret ::compiled-registry)
+  :ret ::compiled-sites)
 
-(defn make-registry
+(defn ^:deprecated make-registry
+  "See `compile-sites`."
   [registry]
-  (into {}
-        (mapcat (fn [[k m]]
-                  (let [m* (dissoc m :aliases)]
-                    (into [[k m*]]
-                          (map #(vector %1 m*))
-                          (:aliases m)))))
-        registry))
+  (letfn [(->site [[k v]]
+            {:site/aliases (into #{k} (:aliases v))
+             :site/canonical (:canonical v k)
+             :site/https? (:https? v true)})]
+    (compile-sites (into #{} (map ->site) registry))))
