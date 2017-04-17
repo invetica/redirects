@@ -1,8 +1,13 @@
 machine:
   java:
     version: oraclejdk8
+  environment:
+    _JAVA_OPTIONS: "-Xms512m -Xmx2048m"
 
 test:
   override:
     - lein trampoline test
-    - lein trampoline lint
+    # Bring back Eastwood!
+    #
+    # https://github.com/invetica/redirects/issues/2
+    - lein whitespace-linter
