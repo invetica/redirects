@@ -1,4 +1,4 @@
-(defproject invetica/redirects "0.2.0"
+(defproject invetica/redirects "0.3.0-SNAPSHOT"
   :description "Canonical redirects for your URL."
   :url "https://github.com/invetica/redirects"
   :license {:name "The MIT License"
