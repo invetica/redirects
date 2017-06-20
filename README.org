@@ -14,8 +14,8 @@ canonical URL.
 #+END_HTML
 
 * Contents                                                              :TOC:
- - [[#usage][Usage]]
- - [[#license][License]]
+- [[#usage][Usage]]
+- [[#license][License]]
 
 * Usage
 #+begin_src clojure
@@ -25,13 +25,12 @@ canonical URL.
   ;; Create a registry of hostnames you want to redirect to a canonical
   ;; (optionally with HTTPS scheme) URL.
   (def registry
-    (redirects/make-registry
-     {"example.com" {:aliases #{"example.co.fr"
-                                "example.co.uk"
-                                "example.de"
-                                "example.pro"}
-                     :canonical "example.com"
-                     :https? true}}))
+    (redirects/compile-sites
+     #{{:site/canonical "www.example.com"}
+       {:site/canonical "www.invetica.co.uk"
+        :site/aliases #{"invetica.co.uk"
+                        "invetika.co.uk"}
+        :site/https? true}}))
 
   ;; Call `invetica.redirects/canonical-redirect` with your compiled registry, and
   ;; the request map.
@@ -48,7 +47,7 @@ canonical URL.
     :uri "/foo"})
 
   ;; => {:status 302,
-  ;;     :headers {"Location" "https://example.com/foo?a=b&c=d"}
+  ;;     :headers {"Location" "http://example.com/foo?a=b&c=d"}
   ;;     :body ""}
 #+end_src
 
