@@ -7,7 +7,7 @@
                  [invetica/uri "0.4.0"]
                  [org.clojure/clojure "1.9.0-alpha17"]
                  [ring/ring-core "1.6.1"]
-                 [ring/ring-spec "0.0.2"]]
+                 [invetica/ring-spec "0.0.3-SNAPSHOT"]]
   :min-lein-version "2.5.0"
   :aliases {"lint" ["do" ["whitespace-linter"] ["eastwood"]]}
   :profiles
