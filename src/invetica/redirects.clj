@@ -2,20 +2,8 @@
   "Redirect some requests to their canonical counterparts.
 
   To redirect a number of gTLDs for example, you can take a registry (i.e.
-  hash-map) like so:
-
-      {\"example.co.uk\" {:aliases #{\"example.co.uk\"
-                                    \"example.de\"
-                                    \"example.fr\"
-                                    \"example-files.com\"}
-                          :canonical \"example.com\"
-                          :https? true}}
-
-  ...and 'compile' it into an optimised registry for use with
-  `canonical-redirect`.
-
-  The above example would redirect any HTTP(S) request to example.co.uk, to
-  https://www.example.com/ preserving any path and/or query string."
+  hash-map) and 'compile' it into an optimised registry for use with
+  `canonical-redirect`."
   (:require [clojure.spec :as s]
             [invetica.uri :as uri]
             [ring.core.spec]
@@ -86,8 +74,9 @@
   ([registry request options]
    (let [{:keys [scheme server-name]} request]
      (when-let [{:keys [:site/canonical :site/https?]
-                 :or {https? true} :as site} (get registry server-name)]
-       (when-not (= canonical server-name)
+                 :as site} (get registry server-name)]
+       (when (or (not= canonical server-name)
+                 (and https? (not= :https scheme)))
          (response/redirect
           (canonical-uri-str request site options)
           (if (get-request? request) 302 307)))))))
@@ -106,8 +95,8 @@
 
 (s/def ::compiled-sites
   (s/map-of :ring.request/server-name
-            (s/keys :req [:site/canonical]
-                    :opt [:site/https?])))
+            (s/keys :req [:site/canonical
+                          :site/https?])))
 
 (s/fdef compile-sites
   :args (s/cat :sites (s/coll-of ::site :into #{}))
@@ -116,10 +105,13 @@
 (defn compile-sites
   [sites]
   (into {}
-        (mapcat (fn [site]
-                  (let [m* (dissoc site :site/aliases)]
-                    (into []
-                          (map #(vector %1 m*))
+        (mapcat (fn explode-aliases
+                  [site]
+                  (let [m* (-> {:site/https? false}
+                               (merge site)
+                               (dissoc :site/aliases))]
+                    (into [[(:site/canonical site) m*]]
+                          (map #(vector % m*))
                           (:site/aliases site)))))
         sites))
 
