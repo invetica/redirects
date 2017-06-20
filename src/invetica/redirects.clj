@@ -37,6 +37,19 @@
   (comp redirect-statuses :status))
 
 ;; -----------------------------------------------------------------------------
+;; Port numbers
+
+(def ^:private default-ports
+  {:http #{80}
+   :https #{443}})
+
+(defn default-port?
+  [scheme server-port]
+  (boolean
+   (when-let [nums (default-ports scheme)]
+     (contains? nums server-port))))
+
+;; -----------------------------------------------------------------------------
 ;; Redirect
 
 (s/fdef canonical-uri-str
@@ -44,16 +57,18 @@
   :ret ::uri/absolute-uri-str)
 
 (defn- canonical-uri-str
-  [request {:keys [site/canonical site/https?]} options]
-  (let [ssl-port (:ssl-port options)
-        qs (:query-string request)]
-    (str "http"
-         (when https? "s")
-         "://"
-         canonical
-         (when (and https? ssl-port) (str ":" ssl-port))
-         (:uri request)
-         (when qs (str "?" qs)))))
+  [{:keys [server-port query-string scheme] :as request}
+   {:keys [site/canonical site/https?]}
+   {:keys [ssl-port]}]
+  (str "http"
+       (when https? "s")
+       "://"
+       canonical
+       (cond
+         (and https? ssl-port) (str ":" ssl-port)
+         (not (default-port? scheme server-port)) (str ":" server-port))
+       (:uri request)
+       (when query-string (str "?" query-string))))
 
 (s/def ::ssl-port
   ::uri/port)
