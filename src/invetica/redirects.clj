@@ -5,7 +5,7 @@
   hash-map) and 'compile' it into an optimised registry for use with
   `canonical-redirect`."
   (:require
-   [clojure.spec :as s]
+   [clojure.spec.alpha :as s]
    [invetica.uri :as uri]
    [ring.core.spec]
    [ring.util.response :as response]))
