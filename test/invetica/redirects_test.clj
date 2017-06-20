@@ -1,9 +1,10 @@
 (ns invetica.redirects-test
-  (:require [clojure.test :refer :all]
-            [invetica.redirects :as sut]
-            [invetica.test.spec :as test.spec]
-            [invetica.test.util :as t]
-            [ring.mock.request :as mock]))
+  (:require
+   [clojure.test :refer :all]
+   [invetica.redirects :as sut]
+   [invetica.test.spec :as test.spec]
+   [ring.mock.request :as mock]
+   [ring.util.response :as response]))
 
 ;; -----------------------------------------------------------------------------
 ;; Specs
@@ -14,17 +15,28 @@
   (test.spec/is-well-specified 'invetica.redirects))
 
 ;; -----------------------------------------------------------------------------
+;; Utils
+
+(defn- location
+  [response]
+  (response/get-header response "location"))
+
+(defn- maybe-redirect
+  [sites request]
+  (sut/canonical-redirect (sut/compile-sites sites) request))
+
+;; -----------------------------------------------------------------------------
 ;; Sites
 
-(def sites
+(def ^:private sites
   #{{:site/aliases #{"invetica.co.uk"
                      "invetica.pro"
                      "invetika.com"}
      :site/canonical "www.invetica.co.uk"
      :site/https? true}
-    {:site/aliases #{"example.co.uk"}
-     :site/canonical "www.example.com"
-     :site/https? false}})
+    {:site/aliases #{"example.co.uk"
+                     "example.com"}
+     :site/canonical "www.example.com"}})
 
 (deftest t-deprecated-config
   (is (= (sut/compile-sites sites)
@@ -33,60 +45,116 @@
                                         "invetika.com"}
                              :canonical "www.invetica.co.uk"
                              :https? true}
-           "example.co.uk" {:canonical "www.example.com"
+           "example.co.uk" {:aliases #{"example.com"}
+                            :canonical "www.example.com"
                             :https? false}}))))
+
+(deftest t-compile-sites
+  (let [registry (sut/compile-sites sites)]
+    (is (= ["example.co.uk"
+            "example.com"
+            "invetica.co.uk"
+            "invetica.pro"
+            "invetika.com"
+            "www.example.com"
+            "www.invetica.co.uk"]
+           (sort (keys registry))))))
 
 ;; -----------------------------------------------------------------------------
 ;; Redirects
 
-(defn- test-cases
-  []
-  #{{:desc "No redirect for unknown request."
-     :request (mock/request :get "/foo")
-     :response nil}
-    {:desc "No redirect for unknown request with query string."
-     :request (-> (mock/request :get "http://example.com/foo")
-                  (mock/query-string {"a" "b" "c" "d"}))
-     :response nil}
-    {:desc "No redirect for canonical URL."
-     :request (-> (mock/request :get "https://www.invetica.co.uk/foo")
-                  (mock/query-string {"a" "b" "c" "d"}))
-     :response nil}
-    {:desc "302 redirect for site alias without required HTTPS."
-     :request (-> (mock/request :get "/foo")
-                  (assoc :server-name "invetika.com")
-                  (mock/header "host" "invetika.com")
-                  (mock/query-string {"a" "b", "c" "d"}))
-     :response {:status 302
-                :headers {"Location" "https://www.invetica.co.uk/foo?a=b&c=d"}
-                :body ""}}
-    {:desc "302 redirect for site alias with required HTTPS."
-     :request (-> (mock/request :get "https://invetica.co.uk/foo")
-                  (mock/query-string {"a" "b" "c" "d"}))
-     :response {:status 302
-                :headers {"Location" "https://www.invetica.co.uk/foo?a=b&c=d"}
-                :body ""}}
-    {:desc "307 redirect for POST request."
-     :request (-> (mock/request :post "/foo")
-                  (assoc :server-name "invetika.com")
-                  (mock/header "host" "invetika.com")
-                  (mock/query-string {"a" "b", "c" "d"}))
-     :response {:status 307
-                :headers {"Location" "https://www.invetica.co.uk/foo?a=b&c=d"}
-                :body ""}}
-    {:desc "Redirect to canonical www preserves HTTPS."
-     :request (-> (mock/request :get "https://invetica.co.uk/foo")
-                  (mock/query-string {"a" "b", "c" "d"}))
-     :response {:status 302
-                :headers {"Location" "https://www.invetica.co.uk/foo?a=b&c=d"}
-                :body ""}}})
+(deftest t-redirect-not-required
+  (let [response (maybe-redirect
+                  #{{:site/canonical "www.example.com"}}
+                  (mock/request :get "http://www.example.com/"))]
+    (is (nil? response))))
 
-(deftest t-canonical-redirect
-  (let [registry* (sut/compile-sites sites)]
-    (doseq [{:keys [request response]} (test-cases)]
-      (is (= response
-             (sut/canonical-redirect registry* request))
-          (str "Unexpected response for request:\n"
-               (t/pprint-str request)
-               "\nUsing registry:\n"
-               (t/pprint-str registry*))))))
+(deftest t-redirect-not-required-unknown-site
+  (let [response (maybe-redirect
+                  #{{:site/canonical "www.example.com"}}
+                  (mock/request :get "http://some.example.com/"))]
+    (is (nil? response))))
+
+(deftest t-redirect-get-requests
+  (let [response (maybe-redirect
+                  #{{:site/aliases #{"example.com"}
+                     :site/canonical "www.example.com"}}
+                  (-> (mock/request :get "http://example.com/")
+                      (mock/query-string {"a" "b" "c" "d"})))]
+    (is (= 302 (:status response)))
+    (is (= "http://www.example.com/?a=b&c=d" (location response)))))
+
+(deftest t-redirect-post-requests
+  (let [response (maybe-redirect
+                  #{{:site/aliases #{"example.com"}
+                     :site/canonical "www.example.com"}}
+                  (-> (mock/request :post "http://example.com/")
+                      (mock/query-string {"a" "b" "c" "d"})))]
+    (is (= 307 (:status response)))
+    (is (= "http://www.example.com/?a=b&c=d" (location response)))))
+
+(deftest t-redirect-https
+  (let [registry (sut/compile-sites #{{:site/aliases #{"example.com"}
+                                       :site/https? true
+                                       :site/canonical "www.example.com"}})]
+    (testing "alias host"
+      (let [response (sut/canonical-redirect
+                      registry
+                      (-> (mock/request :get "http://example.com/")
+                          (mock/query-string {"a" "b" "c" "d"})))]
+        (is (= 302 (:status response)))
+        (is (= "https://www.example.com/?a=b&c=d" (location response)))))
+    (testing "canonical host"
+      (let [response (sut/canonical-redirect
+                      registry
+                      (-> (mock/request :get "http://www.example.com/")
+                          (mock/query-string {"a" "b" "c" "d"})))]
+        (is (= 302 (:status response)))
+        (is (= "https://www.example.com/?a=b&c=d" (location response)))))))
+
+;; When the protocol changes we can ignore the previous port because it's highly
+;; unlikely (not impossible) for a connection on a single port to satisfy both
+;; HTTP and HTTPS requests.
+;;
+;; With no protocol change the port stays the same.
+;;
+;; With HTTPS we use the default port, or your `ssl-port` override.
+(deftest t-redirect-preserves-port-numbers
+  (let [registry (sut/compile-sites sites)]
+    (testing "no protocol change (HTTP) with standard port"
+      (let [response (sut/canonical-redirect
+                      registry
+                      (mock/request :get "http://example.com:80/"))]
+        (is (= 302 (:status response)))
+        (is (= "http://www.example.com/" (location response)))))
+    (testing "no protocol change (HTTP) with non-standard port"
+      (let [response (sut/canonical-redirect
+                      registry
+                      (mock/request :get "http://example.com:1234/"))]
+        (is (= 302 (:status response)))
+        (is (= "http://www.example.com:1234/" (location response)))))
+    (testing "no protocol change (HTTPS) with standard port"
+      (let [response (sut/canonical-redirect
+                      registry
+                      (mock/request :get "https://invetica.co.uk:443/"))]
+        (is (= 302 (:status response)))
+        (is (= "https://www.invetica.co.uk/" (location response)))))
+    (testing "no protocol change (HTTPS) with non-standard port"
+      (let [response (sut/canonical-redirect
+                      registry
+                      (mock/request :get "https://invetica.co.uk:9999/"))]
+        (is (= 302 (:status response)))
+        (is (= "https://www.invetica.co.uk:9999/" (location response)))))
+    (testing "protocol change with default ssl-port"
+      (let [response (sut/canonical-redirect
+                      registry
+                      (mock/request :get "http://www.invetica.co.uk:80/"))]
+        (is (= 302 (:status response)))
+        (is (= "https://www.invetica.co.uk/" (location response)))))
+    (testing "protocol change with custom ssl-port"
+      (let [response (sut/canonical-redirect
+                      registry
+                      (mock/request :get "http://www.invetica.co.uk:80/")
+                      {:ssl-port 8993})]
+        (is (= 302 (:status response)))
+        (is (= "https://www.invetica.co.uk:8993/" (location response)))))))
