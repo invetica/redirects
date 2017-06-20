@@ -1,5 +1,6 @@
 (ns invetica.test.util
-  (:require [clojure.pprint :refer [pprint]]))
+  (:require
+   [clojure.pprint :refer [pprint]]))
 
 (defn pprint-str
   [x]

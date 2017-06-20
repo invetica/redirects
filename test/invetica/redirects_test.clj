@@ -1,9 +1,10 @@
 (ns invetica.redirects-test
-  (:require [clojure.test :refer :all]
-            [invetica.redirects :as sut]
-            [invetica.test.spec :as test.spec]
-            [ring.mock.request :as mock]
-            [ring.util.response :as response]))
+  (:require
+   [clojure.test :refer :all]
+   [invetica.redirects :as sut]
+   [invetica.test.spec :as test.spec]
+   [ring.mock.request :as mock]
+   [ring.util.response :as response]))
 
 ;; -----------------------------------------------------------------------------
 ;; Specs

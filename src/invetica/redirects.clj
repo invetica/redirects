@@ -4,10 +4,11 @@
   To redirect a number of gTLDs for example, you can take a registry (i.e.
   hash-map) and 'compile' it into an optimised registry for use with
   `canonical-redirect`."
-  (:require [clojure.spec :as s]
-            [invetica.uri :as uri]
-            [ring.core.spec]
-            [ring.util.response :as response]))
+  (:require
+   [clojure.spec :as s]
+   [invetica.uri :as uri]
+   [ring.core.spec]
+   [ring.util.response :as response]))
 
 ;; -----------------------------------------------------------------------------
 ;; Specs
