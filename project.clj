@@ -13,6 +13,7 @@
   {:dev
    {:aliases {"lint" ["do" ["whitespace-linter"] ["eastwood"]]}
     :dependencies [[com.gfredericks/test.chuck "0.2.8"]
+                   [eftest "0.3.1"]
                    [org.clojure/test.check "0.10.0-alpha2"]
                    ;; See https://github.com/ring-clojure/ring-mock/pull/12
                    [invetica/ring-mock "0.4.0-SNAPSHOT"]]
